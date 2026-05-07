@@ -12,6 +12,9 @@ import { TypewriterShowcase } from "@/components/showcases/TypewriterShowcase";
 import { ConstellationShowcase } from "@/components/showcases/ConstellationShowcase";
 import { LetterSwarmShowcase } from "@/components/showcases/LetterSwarmShowcase";
 import { AsciiRainShowcase } from "@/components/showcases/AsciiRainShowcase";
+import { TypeDefenseShowcase } from "@/components/showcases/TypeDefenseShowcase";
+import { WordAsteroidsShowcase } from "@/components/showcases/WordAsteroidsShowcase";
+import { BlackHoleShowcase } from "@/components/showcases/BlackHoleShowcase";
 
 export interface ShowcaseEntry {
   id: string;
@@ -34,6 +37,9 @@ export const SHOWCASES: ShowcaseEntry[] = [
   { id: "constellation", title: "Constellation", group: "originals", component: ConstellationShowcase },
   { id: "letter-swarm", title: "Letter Swarm", group: "originals", component: LetterSwarmShowcase },
   { id: "ascii-rain", title: "ASCII Rain", group: "originals", component: AsciiRainShowcase },
+  { id: "type-defense", title: "Type Defense", group: "originals", component: TypeDefenseShowcase },
+  { id: "word-asteroids", title: "Word Asteroids", group: "originals", component: WordAsteroidsShowcase },
+  { id: "black-hole", title: "Black Hole", group: "originals", component: BlackHoleShowcase },
 ];
 
 export function getShowcase(id: string): ShowcaseEntry | undefined {
