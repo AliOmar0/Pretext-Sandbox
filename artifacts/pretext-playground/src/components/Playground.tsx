@@ -2,17 +2,14 @@ import { useState } from "react";
 import { PlaygroundContext } from "@/lib/playground-context";
 import { Hero } from "@/components/Hero";
 import { TextInputPanel } from "@/components/TextInputPanel";
-import { AccordionShowcase } from "@/components/showcases/AccordionShowcase";
-import { EditorialEngine } from "@/components/showcases/EditorialEngine";
-import { MasonryShowcase } from "@/components/showcases/MasonryShowcase";
-import { DynamicLayoutShowcase } from "@/components/showcases/DynamicLayoutShowcase";
-import { BubblesShowcase } from "@/components/showcases/BubblesShowcase";
 import { FluidInterfacesShowcase } from "@/components/showcases/FluidInterfacesShowcase";
 import { WebIsInterestingAgainShowcase } from "@/components/showcases/WebIsInterestingAgainShowcase";
 import { PretextBreakerShowcase } from "@/components/showcases/PretextBreakerShowcase";
 import { WaterRippleShowcase } from "@/components/showcases/WaterRippleShowcase";
 import { IlluminatedDragonShowcase } from "@/components/showcases/IlluminatedDragonShowcase";
 import { HookesLawShowcase } from "@/components/showcases/HookesLawShowcase";
+import { VariableAsciiShowcase } from "@/components/showcases/VariableAsciiShowcase";
+import { MagicalTimeShowcase } from "@/components/showcases/MagicalTimeShowcase";
 import { AsciiRainShowcase } from "@/components/showcases/AsciiRainShowcase";
 import { GravityWordsShowcase } from "@/components/showcases/GravityWordsShowcase";
 import { TypewriterShowcase } from "@/components/showcases/TypewriterShowcase";
@@ -41,36 +38,19 @@ export function Playground() {
             <div className="flex items-center gap-4">
               <div className="h-px bg-border flex-1" />
               <h2 className="text-3xl font-serif font-semibold tracking-tight text-foreground uppercase">
-                Official Demos
-              </h2>
-              <div className="h-px bg-border flex-1" />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <AccordionShowcase />
-              <DynamicLayoutShowcase />
-              <EditorialEngine />
-              <MasonryShowcase />
-              <BubblesShowcase />
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-12">
-            <div className="flex items-center gap-4">
-              <div className="h-px bg-border flex-1" />
-              <h2 className="text-3xl font-serif font-semibold tracking-tight text-foreground uppercase">
                 Community Showcase
               </h2>
               <div className="h-px bg-border flex-1" />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <WaterRippleShowcase />
-              <IlluminatedDragonShowcase />
-              <HookesLawShowcase />
-              <AsciiRainShowcase />
-              <FluidInterfacesShowcase />
               <WebIsInterestingAgainShowcase />
+              <VariableAsciiShowcase />
+              <IlluminatedDragonShowcase />
+              <MagicalTimeShowcase />
+              <HookesLawShowcase />
+              <FluidInterfacesShowcase />
+              <WaterRippleShowcase />
               <PretextBreakerShowcase />
             </div>
           </div>
@@ -89,6 +69,7 @@ export function Playground() {
               <TypewriterShowcase />
               <ConstellationShowcase />
               <LetterSwarmShowcase />
+              <AsciiRainShowcase />
             </div>
           </div>
         </main>
