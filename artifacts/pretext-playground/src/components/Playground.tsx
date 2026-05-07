@@ -5,13 +5,19 @@ import { TextInputPanel } from "@/components/TextInputPanel";
 import { AccordionShowcase } from "@/components/showcases/AccordionShowcase";
 import { EditorialEngine } from "@/components/showcases/EditorialEngine";
 import { MasonryShowcase } from "@/components/showcases/MasonryShowcase";
-import { JustificationComparison } from "@/components/showcases/JustificationComparison";
 import { DynamicLayoutShowcase } from "@/components/showcases/DynamicLayoutShowcase";
-import { RichTextShowcase } from "@/components/showcases/RichTextShowcase";
 import { BubblesShowcase } from "@/components/showcases/BubblesShowcase";
 import { FluidInterfacesShowcase } from "@/components/showcases/FluidInterfacesShowcase";
 import { WebIsInterestingAgainShowcase } from "@/components/showcases/WebIsInterestingAgainShowcase";
 import { PretextBreakerShowcase } from "@/components/showcases/PretextBreakerShowcase";
+import { WaterRippleShowcase } from "@/components/showcases/WaterRippleShowcase";
+import { IlluminatedDragonShowcase } from "@/components/showcases/IlluminatedDragonShowcase";
+import { HookesLawShowcase } from "@/components/showcases/HookesLawShowcase";
+import { AsciiRainShowcase } from "@/components/showcases/AsciiRainShowcase";
+import { GravityWordsShowcase } from "@/components/showcases/GravityWordsShowcase";
+import { TypewriterShowcase } from "@/components/showcases/TypewriterShowcase";
+import { ConstellationShowcase } from "@/components/showcases/ConstellationShowcase";
+import { LetterSwarmShowcase } from "@/components/showcases/LetterSwarmShowcase";
 import { Footer } from "@/components/Footer";
 
 const DEFAULT_TEXT = `Typography is the art and technique of arranging type to make written language legible, readable, and appealing when displayed. The arrangement of type involves selecting typefaces, point sizes, line lengths, line-spacing, and letter-spacing, and adjusting the space between pairs of letters. 
@@ -27,39 +33,62 @@ export function Playground() {
     <PlaygroundContext.Provider value={{ text, setText, defaultText: DEFAULT_TEXT }}>
       <div className="min-h-screen w-full flex flex-col bg-background">
         <Hero />
-        
+
         <main className="container mx-auto px-4 md:px-8 max-w-6xl flex flex-col gap-24 mt-12 flex-1">
           <TextInputPanel />
-          
+
           <div className="flex flex-col gap-12">
             <div className="flex items-center gap-4">
               <div className="h-px bg-border flex-1" />
-              <h2 className="text-3xl font-serif font-semibold tracking-tight text-foreground uppercase">Official Demos</h2>
+              <h2 className="text-3xl font-serif font-semibold tracking-tight text-foreground uppercase">
+                Official Demos
+              </h2>
               <div className="h-px bg-border flex-1" />
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <AccordionShowcase />
-              <EditorialEngine />
               <DynamicLayoutShowcase />
-              <RichTextShowcase />
+              <EditorialEngine />
               <MasonryShowcase />
               <BubblesShowcase />
-              <JustificationComparison />
             </div>
           </div>
 
           <div className="flex flex-col gap-12">
             <div className="flex items-center gap-4">
               <div className="h-px bg-border flex-1" />
-              <h2 className="text-3xl font-serif font-semibold tracking-tight text-foreground uppercase">Community Showcase</h2>
+              <h2 className="text-3xl font-serif font-semibold tracking-tight text-foreground uppercase">
+                Community Showcase
+              </h2>
               <div className="h-px bg-border flex-1" />
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <WaterRippleShowcase />
+              <IlluminatedDragonShowcase />
+              <HookesLawShowcase />
+              <AsciiRainShowcase />
               <FluidInterfacesShowcase />
-              <PretextBreakerShowcase />
               <WebIsInterestingAgainShowcase />
+              <PretextBreakerShowcase />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-12">
+            <div className="flex items-center gap-4">
+              <div className="h-px bg-border flex-1" />
+              <h2 className="text-3xl font-serif font-semibold tracking-tight text-foreground uppercase">
+                Originals
+              </h2>
+              <div className="h-px bg-border flex-1" />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <GravityWordsShowcase />
+              <TypewriterShowcase />
+              <ConstellationShowcase />
+              <LetterSwarmShowcase />
             </div>
           </div>
         </main>

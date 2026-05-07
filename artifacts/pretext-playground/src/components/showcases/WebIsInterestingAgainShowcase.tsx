@@ -48,7 +48,7 @@ export function WebIsInterestingAgainShowcase() {
   );
 }
 
-function Letter({ char, mousePos, containerRef }: { char: string, mousePos: { x: number, y: number }, containerRef: React.RefObject<HTMLDivElement> }) {
+function Letter({ char, mousePos, containerRef }: { char: string, mousePos: { x: number, y: number }, containerRef: React.RefObject<HTMLDivElement | null> }) {
   const charRef = useRef<HTMLSpanElement>(null);
   
   let rotate = 0;
