@@ -1,130 +1,144 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePlayground } from "@/lib/playground-context";
 import { ShowcaseCard } from "@/components/ShowcaseCard";
 
-interface Ripple {
-  x: number;
-  y: number;
-  t: number;
-  strength: number;
-}
+interface Ripple { x: number; y: number; t: number; }
+interface Char { ch: string; x: number; y: number; }
+
+const FONT_SIZE = 18;
+const LINE_H = 26;
+const BOX_H = 300;
 
 export function WaterRippleShowcase() {
   const { text } = usePlayground();
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const ripplesRef = useRef<Ripple[]>([]);
-  const ambientRef = useRef(0);
+  const ripples = useRef<Ripple[]>([]);
+  const [chars, setChars] = useState<Char[]>([]);
+  const [, setTick] = useState(0);
+  const [size, setSize] = useState({ w: 600 });
 
   useEffect(() => {
-    const canvas = canvasRef.current;
     const wrap = wrapRef.current;
-    if (!canvas || !wrap) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    if (!wrap) return;
+    const r = wrap.getBoundingClientRect();
+    setSize({ w: r.width });
+  }, []);
 
+  useEffect(() => {
+    const w = size.w;
+    if (w === 0) return;
+    const c = document.createElement("canvas").getContext("2d")!;
+    c.font = `${FONT_SIZE}px Fraunces, serif`;
+    const words = text.replace(/\s+/g, " ").trim().split(" ").slice(0, 80);
+    const out: Char[] = [];
+    let x = 0, y = LINE_H;
+    for (const word of words) {
+      const ww = c.measureText(word + " ").width;
+      if (x + ww > w - 8) { x = 0; y += LINE_H; }
+      if (y > BOX_H - 8) break;
+      let cx = x;
+      for (const ch of word + " ") {
+        const cw = c.measureText(ch).width;
+        out.push({ ch, x: cx, y });
+        cx += cw;
+      }
+      x += ww;
+    }
+    setChars(out);
+  }, [text, size.w]);
+
+  useEffect(() => {
     let raf = 0;
-    const dpr = window.devicePixelRatio || 1;
-
-    const resize = () => {
-      const r = wrap.getBoundingClientRect();
-      canvas.width = r.width * dpr;
-      canvas.height = r.height * dpr;
-      canvas.style.width = `${r.width}px`;
-      canvas.style.height = `${r.height}px`;
+    const loop = () => {
+      ripples.current = ripples.current.filter((r) => Date.now() - r.t < 1800);
+      setTick((t) => (t + 1) % 1000000);
+      raf = requestAnimationFrame(loop);
     };
-    resize();
-    const ro = new ResizeObserver(resize);
-    ro.observe(wrap);
+    raf = requestAnimationFrame(loop);
 
-    const ambientInterval = window.setInterval(() => {
-      const r = wrap.getBoundingClientRect();
-      ripplesRef.current.push({
-        x: Math.random() * r.width * dpr,
-        y: Math.random() * r.height * dpr,
-        t: 0,
-        strength: 0.4,
+    let auto = setInterval(() => {
+      ripples.current.push({
+        x: Math.random() * size.w,
+        y: Math.random() * BOX_H,
+        t: Date.now(),
       });
     }, 1400);
 
-    const draw = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-      grad.addColorStop(0, "rgba(225, 220, 210, 0.5)");
-      grad.addColorStop(1, "rgba(200, 195, 185, 0.5)");
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      ambientRef.current += 0.012;
-
-      ripplesRef.current = ripplesRef.current.filter((r) => r.t < 220);
-      ripplesRef.current.forEach((r) => {
-        r.t += 1.2;
-        const radius = r.t * 1.6 * dpr;
-        const alpha = Math.max(0, (1 - r.t / 220) * r.strength);
-        ctx.strokeStyle = `hsla(10, 76%, 53%, ${alpha})`;
-        ctx.lineWidth = 2 * dpr;
-        ctx.beginPath();
-        ctx.arc(r.x, r.y, radius, 0, Math.PI * 2);
-        ctx.stroke();
-
-        ctx.strokeStyle = `hsla(10, 76%, 53%, ${alpha * 0.5})`;
-        ctx.lineWidth = 1 * dpr;
-        ctx.beginPath();
-        ctx.arc(r.x, r.y, radius * 0.7, 0, Math.PI * 2);
-        ctx.stroke();
-      });
-
-      raf = requestAnimationFrame(draw);
-    };
-    raf = requestAnimationFrame(draw);
-
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-      window.clearInterval(ambientInterval);
-    };
-  }, []);
+    return () => { cancelAnimationFrame(raf); clearInterval(auto); };
+  }, [size.w]);
 
   const handleClick = (e: React.MouseEvent) => {
     const wrap = wrapRef.current;
     if (!wrap) return;
-    const rect = wrap.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    ripplesRef.current.push({
-      x: (e.clientX - rect.left) * dpr,
-      y: (e.clientY - rect.top) * dpr,
-      t: 0,
-      strength: 1,
-    });
+    const r = wrap.getBoundingClientRect();
+    ripples.current.push({ x: e.clientX - r.left, y: e.clientY - r.top, t: Date.now() });
   };
 
+  const now = Date.now();
   return (
     <ShowcaseCard
       title="Water Ripple"
-      description="Click anywhere on the surface. Ripples spread, text shimmers."
-      className="md:col-span-2"
+      description="Click anywhere to drop a ripple. Letters bob on the surface."
     >
       <div
         ref={wrapRef}
         onClick={handleClick}
-        className="relative h-[320px] rounded-xl overflow-hidden cursor-pointer border border-border bg-muted/30"
+        className="relative w-full rounded-lg overflow-hidden cursor-pointer select-none"
+        style={{
+          height: BOX_H,
+          background: "linear-gradient(180deg, #0c2434 0%, #0a1a2a 100%)",
+        }}
       >
-        <canvas ref={canvasRef} className="absolute inset-0" />
-        <div
-          className="absolute inset-0 flex items-center justify-center p-8"
-          style={{ animation: "shimmer 4s ease-in-out infinite" }}
-        >
-          <p className="font-serif text-lg leading-relaxed text-foreground/85 text-center max-w-xl">
-            {text.split("\n\n")[0]}
-          </p>
-        </div>
-        <style>{`
-          @keyframes shimmer {
-            0%, 100% { filter: blur(0px); transform: skewX(0deg); }
-            50% { filter: blur(0.5px); transform: skewX(0.4deg); }
+        <svg className="absolute inset-0 pointer-events-none" width={size.w} height={BOX_H}>
+          {ripples.current.map((r, i) => {
+            const age = (now - r.t) / 1800;
+            const radius = age * 200;
+            return (
+              <circle
+                key={i}
+                cx={r.x}
+                cy={r.y}
+                r={radius}
+                fill="none"
+                stroke="rgba(120,200,255,0.6)"
+                strokeWidth={2 * (1 - age)}
+                opacity={1 - age}
+              />
+            );
+          })}
+        </svg>
+        {chars.map((c, i) => {
+          let dx = 0, dy = 0, scale = 1;
+          for (const r of ripples.current) {
+            const age = (now - r.t) / 1800;
+            const radius = age * 200;
+            const dist = Math.hypot(c.x - r.x, c.y - r.y);
+            const diff = dist - radius;
+            if (Math.abs(diff) < 28) {
+              const wave = Math.cos((diff / 28) * Math.PI) * (1 - age) * 12;
+              const ang = Math.atan2(c.y - r.y, c.x - r.x);
+              dx += Math.cos(ang) * wave;
+              dy += Math.sin(ang) * wave;
+              scale += wave * 0.02;
+            }
           }
-        `}</style>
+          return (
+            <span
+              key={i}
+              className="absolute font-serif text-white/90"
+              style={{
+                left: c.x,
+                top: c.y,
+                fontSize: FONT_SIZE,
+                transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(${scale.toFixed(3)})`,
+                willChange: "transform",
+                whiteSpace: "pre",
+              }}
+            >
+              {c.ch}
+            </span>
+          );
+        })}
       </div>
     </ShowcaseCard>
   );
