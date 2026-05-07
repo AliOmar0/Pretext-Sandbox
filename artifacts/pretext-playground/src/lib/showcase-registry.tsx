@@ -15,6 +15,9 @@ import { AsciiRainShowcase } from "@/components/showcases/AsciiRainShowcase";
 import { TypeDefenseShowcase } from "@/components/showcases/TypeDefenseShowcase";
 import { WordAsteroidsShowcase } from "@/components/showcases/WordAsteroidsShowcase";
 import { BlackHoleShowcase } from "@/components/showcases/BlackHoleShowcase";
+import { WordSnakeShowcase } from "@/components/showcases/WordSnakeShowcase";
+import { SandLettersShowcase } from "@/components/showcases/SandLettersShowcase";
+import { LetterTetrisShowcase } from "@/components/showcases/LetterTetrisShowcase";
 
 export interface ShowcaseEntry {
   id: string;
@@ -40,6 +43,9 @@ export const SHOWCASES: ShowcaseEntry[] = [
   { id: "type-defense", title: "Type Defense", group: "originals", component: TypeDefenseShowcase },
   { id: "word-asteroids", title: "Word Asteroids", group: "originals", component: WordAsteroidsShowcase },
   { id: "black-hole", title: "Black Hole", group: "originals", component: BlackHoleShowcase },
+  { id: "word-snake", title: "Word Snake", group: "originals", component: WordSnakeShowcase },
+  { id: "sand-letters", title: "Sand Letters", group: "originals", component: SandLettersShowcase },
+  { id: "letter-tetris", title: "Letter Tetris", group: "originals", component: LetterTetrisShowcase },
 ];
 
 export function getShowcase(id: string): ShowcaseEntry | undefined {
