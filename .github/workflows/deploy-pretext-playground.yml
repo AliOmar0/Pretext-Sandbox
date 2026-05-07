@@ -30,7 +30,11 @@ jobs:
           cache: "pnpm"
 
       - name: Install dependencies
+<<<<<<< HEAD
         run: pnpm install --no-frozen-lockfile
+=======
+        run: pnpm install --frozen-lockfile
+>>>>>>> 607e5c1 (Add GitHub Actions workflow to deploy the website to GitHub Pages)
 
       - name: Build composite libs
         run: pnpm run typecheck:libs
@@ -38,6 +42,11 @@ jobs:
       - name: Compute base path
         id: base
         run: |
+<<<<<<< HEAD
+=======
+          # For project pages (https://<user>.github.io/<repo>/) use /<repo>/.
+          # For user/org pages (repo is <user>.github.io) or a custom domain, use /.
+>>>>>>> 607e5c1 (Add GitHub Actions workflow to deploy the website to GitHub Pages)
           REPO_NAME="${GITHUB_REPOSITORY##*/}"
           OWNER="${GITHUB_REPOSITORY%%/*}"
           if [ "$REPO_NAME" = "${OWNER}.github.io" ] || [ -f artifacts/pretext-playground/public/CNAME ]; then
