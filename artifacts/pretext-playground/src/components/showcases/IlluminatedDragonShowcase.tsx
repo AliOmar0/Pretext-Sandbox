@@ -1,465 +1,469 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePlayground } from "@/lib/playground-context";
 import { ShowcaseCard } from "@/components/ShowcaseCard";
+import { Button } from "@/components/ui/button";
+import { layoutAround } from "@/lib/flow-around";
+import { Flame, RotateCcw } from "lucide-react";
 
-const W = 760;
-const H = 340;
-const SEGMENTS = 22;
+const FONT = "16px Fraunces, serif";
+const LINE_H = 26;
+const BOX_H = 420;
+const SEG_COUNT = 11;
+const LINK = 13;
+const FIRE_RANGE = 130;
+const FIRE_HALF_ANGLE = Math.PI / 7; // ~25.7°
 
-interface Flame {
-  id: number;
-  born: number;
-  angle: number;
-  speed: number;
-  scale: number;
-  hue: number;
-}
+interface Seg { x: number; y: number; r: number }
+interface Burning { idx: number; text: string; x: number; y: number; w: number; born: number }
+interface FireParticle { id: number; born: number; angle: number; speed: number; scale: number; ember: boolean }
 
 export function IlluminatedDragonShowcase() {
   const { text } = usePlayground();
-  const [t, setT] = useState(0);
-  const [blink, setBlink] = useState(1);
-  const flamesRef = useRef<Flame[]>([]);
-  const flameId = useRef(0);
-  const lastFlame = useRef(0);
-  const rafRef = useRef(0);
+  const wrapRef = useRef<HTMLDivElement>(null);
 
+  const [size, setSize] = useState({ w: 700, h: BOX_H });
+  const [burnedSet, setBurnedSet] = useState<Set<number>>(new Set());
+  const [burning, setBurning] = useState<Burning[]>([]);
+  const [hovering, setHovering] = useState(false);
+  const [tick, setTick] = useState(0);
+
+  // Reset burned set when source text changes
+  const words = useMemo(
+    () => text.replace(/\s+/g, " ").trim().split(" "),
+    [text],
+  );
   useEffect(() => {
-    const start = performance.now();
-    const loop = (now: number) => {
-      const tt = (now - start) / 1000;
-      setT(tt);
-      if (now - lastFlame.current > 55) {
-        lastFlame.current = now;
-        flamesRef.current.push({
-          id: flameId.current++,
-          born: tt,
-          angle: (Math.random() - 0.5) * 0.45,
-          speed: 90 + Math.random() * 70,
-          scale: 0.7 + Math.random() * 0.7,
-          hue: Math.random(),
-        });
-        flamesRef.current = flamesRef.current.filter((f) => tt - f.born < 1.4);
-      }
-      rafRef.current = requestAnimationFrame(loop);
+    setBurnedSet(new Set());
+    setBurning([]);
+  }, [words.join(" ")]);
+
+  // Mutable refs (avoid React re-render storms)
+  const head = useRef({ x: 200, y: 60, dir: 0 });
+  const target = useRef({ x: 200, y: 60 });
+  const segs = useRef<Seg[]>(
+    Array.from({ length: SEG_COUNT }, (_, i) => ({
+      x: 200 - i * LINK,
+      y: 60,
+      r: segRadius(i),
+    })),
+  );
+  const fire = useRef<FireParticle[]>([]);
+  const fireId = useRef(0);
+  const lastFire = useRef(0);
+  const blink = useRef(1);
+  const lastBlink = useRef(0);
+  const layoutCacheRef = useRef<{ idx: number; text: string; x: number; y: number; w: number }[]>([]);
+
+  // Resize observer
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const measure = () => {
+      const r = wrap.getBoundingClientRect();
+      setSize({ w: r.width, h: BOX_H });
+      target.current.x = r.width / 2;
+      target.current.y = BOX_H * 0.4;
     };
-    rafRef.current = requestAnimationFrame(loop);
-    const blinkInt = setInterval(() => {
-      setBlink(0);
-      setTimeout(() => setBlink(1), 140);
-    }, 3200);
-    return () => {
-      cancelAnimationFrame(rafRef.current);
-      clearInterval(blinkInt);
-    };
+    const ro = new ResizeObserver(measure);
+    ro.observe(wrap);
+    measure();
+    return () => ro.disconnect();
   }, []);
 
-  // Serpentine body — undulating S-curve, slow drift
-  const baseY = H * 0.55;
-  const segments = Array.from({ length: SEGMENTS }, (_, i) => {
-    const u = i / (SEGMENTS - 1);
-    // Body length spans most of the canvas, leaving room for head + tail
-    const x = 70 + u * (W - 200);
-    // S-curve: two sine humps + slow swim animation
-    const y =
-      baseY +
-      Math.sin(u * Math.PI * 1.6 + t * 0.9) * 52 +
-      Math.sin(u * Math.PI * 3.2 + t * 0.6) * 10;
-    // Body tapers from middle: thicker near the front quarter, thinning to tail
-    const taper =
-      u < 0.18
-        ? 14 + (u / 0.18) * 14
-        : u < 0.55
-          ? 28 - (u - 0.18) * 10
-          : Math.max(4, 24 - (u - 0.55) * 44);
-    return { x, y, r: taper, u };
-  });
+  // Animation loop
+  useEffect(() => {
+    let raf = 0;
+    const loop = (now: number) => {
+      const t = now / 1000;
 
-  const head = segments[segments.length - 1];
-  const beforeHead = segments[segments.length - 3];
-  const headAngle = Math.atan2(head.y - beforeHead.y, head.x - beforeHead.x);
+      // Steer head toward target with easing
+      const h = head.current;
+      const tgt = target.current;
+      const ease = hovering ? 0.18 : 0.04;
+      h.x += (tgt.x - h.x) * ease;
+      h.y += (tgt.y - h.y) * ease;
+      // Direction = vector toward target (so dragon faces motion even at rest)
+      const ddx = tgt.x - h.x;
+      const ddy = tgt.y - h.y;
+      if (Math.hypot(ddx, ddy) > 1) {
+        h.dir = h.dir + angleDelta(h.dir, Math.atan2(ddy, ddx)) * 0.2;
+      }
 
-  const tail = segments[0];
-  const afterTail = segments[2];
-  const tailAngle = Math.atan2(tail.y - afterTail.y, tail.x - afterTail.x);
+      // Chain follow
+      let prev = { x: h.x, y: h.y };
+      for (let i = 0; i < segs.current.length; i++) {
+        const s = segs.current[i];
+        const dx = s.x - prev.x;
+        const dy = s.y - prev.y;
+        const d = Math.hypot(dx, dy) || 1;
+        const ratio = LINK / d;
+        s.x = prev.x + dx * ratio;
+        s.y = prev.y + dy * ratio;
+        prev = { x: s.x, y: s.y };
+      }
 
-  // Wing anchor: ~25% along body from head end (front shoulder)
-  const wingIdx = Math.floor(SEGMENTS * 0.78);
-  const wing = segments[wingIdx];
+      // Blink occasionally
+      if (now - lastBlink.current > 2800) {
+        blink.current = 0;
+        if (now - lastBlink.current > 2940) {
+          blink.current = 1;
+          lastBlink.current = now;
+        }
+      }
 
-  const bodyPath = pathThrough(segments);
-  const sentence = (text.split(/(?<=[.!?])\s/)[0] || text).slice(0, 220);
+      // Spawn fire when hovering and breathing
+      if (hovering && now - lastFire.current > 32) {
+        lastFire.current = now;
+        fire.current.push({
+          id: fireId.current++,
+          born: t,
+          angle: (Math.random() - 0.5) * FIRE_HALF_ANGLE * 1.4,
+          speed: 90 + Math.random() * 80,
+          scale: 0.65 + Math.random() * 0.7,
+          ember: Math.random() > 0.78,
+        });
+      }
+      // Cull old fire
+      fire.current = fire.current.filter((f) => t - f.born < 1.0);
 
-  // Build outline polygon (top + bottom edges of the snake) for fill
-  const outline = bodyOutline(segments);
+      // Hit-test alive words against fire cone
+      if (hovering && layoutCacheRef.current.length) {
+        const ox = h.x + Math.cos(h.dir) * 22;
+        const oy = h.y + Math.sin(h.dir) * 22;
+        const ignite: Burning[] = [];
+        for (const wp of layoutCacheRef.current) {
+          if (burnedSet.has(wp.idx)) continue;
+          // word center in obstacle-local coords; convert to absolute pixels:
+          // layout positions are already local to container (0,0)
+          const cx = wp.x + wp.w / 2;
+          const cy = wp.y + LINE_H / 2;
+          const dx = cx - ox;
+          const dy = cy - oy;
+          const dist = Math.hypot(dx, dy);
+          if (dist > FIRE_RANGE) continue;
+          const ang = Math.atan2(dy, dx);
+          const diff = Math.abs(angleDelta(h.dir, ang));
+          if (diff < FIRE_HALF_ANGLE) {
+            ignite.push({ idx: wp.idx, text: wp.text, x: wp.x, y: wp.y, w: wp.w, born: t });
+          }
+        }
+        if (ignite.length) {
+          setBurnedSet((prev) => {
+            const next = new Set(prev);
+            ignite.forEach((b) => next.add(b.idx));
+            return next;
+          });
+          setBurning((prev) => [...prev, ...ignite]);
+        }
+      }
+
+      // Cull finished burns (after 0.9s)
+      if (burning.length) {
+        const stillBurning = burning.filter((b) => t - b.born < 0.9);
+        if (stillBurning.length !== burning.length) setBurning(stillBurning);
+      }
+
+      setTick((x) => (x + 1) % 1_000_000);
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [hovering, burnedSet, burning]);
+
+  // Layout text around the dragon's bounding box (head + first few thick segments)
+  const aliveList = useMemo(
+    () => words.map((w, i) => ({ text: w, idx: i })).filter((w) => !burnedSet.has(w.idx)),
+    [words, burnedSet],
+  );
+
+  const obstacle = useMemo(() => {
+    // Cover head + first 4 thick body segments — small bounding box that text wraps around
+    const pts = [{ x: head.current.x, y: head.current.y }, ...segs.current.slice(0, 5)];
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of pts) {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    }
+    const pad = 22;
+    return {
+      x: Math.max(0, minX - pad),
+      y: Math.max(0, minY - pad),
+      w: maxX - minX + pad * 2,
+      h: maxY - minY + pad * 2,
+    };
+    // Recompute every tick (head moves)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick]);
+
+  const layout = useMemo(() => {
+    const positions = layoutAround(
+      aliveList.map((a) => a.text),
+      size.w - 16,
+      size.h - 16,
+      LINE_H,
+      FONT,
+      obstacle,
+    );
+    const out = positions.map((p, i) => ({
+      idx: aliveList[i].idx,
+      text: p.text,
+      x: p.x + 8,
+      y: p.y + 8,
+      w: p.w,
+    }));
+    layoutCacheRef.current = out;
+    return out;
+  }, [aliveList, size.w, size.h, obstacle]);
+
+  // Mouse handlers
+  const onMove = (e: React.PointerEvent) => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const r = wrap.getBoundingClientRect();
+    target.current.x = e.clientX - r.left;
+    target.current.y = e.clientY - r.top;
+    setHovering(true);
+  };
+  const onLeave = () => setHovering(false);
+
+  const restoreAll = () => {
+    setBurnedSet(new Set());
+    setBurning([]);
+  };
+
+  const score = burnedSet.size;
+  const total = words.length;
+  const h = head.current;
 
   return (
     <ShowcaseCard
       showcaseId="illuminated-dragon"
       title="Illuminated Dragon"
-      description="A bestiary serpent coiled in the margin, breathing painted fire."
+      description="Move your mouse — the dragon hunts your words and burns them to ash."
+      controls={
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-mono text-muted-foreground tabular-nums">
+            <Flame className="inline w-3.5 h-3.5 mr-1 -mt-0.5 text-primary" />
+            {score} / {total}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={restoreAll}
+            disabled={score === 0 && burning.length === 0}
+          >
+            <RotateCcw className="w-3 h-3 mr-1.5" /> Restore
+          </Button>
+        </div>
+      }
     >
       <div
-        className="relative w-full rounded-lg overflow-hidden"
+        ref={wrapRef}
+        onPointerMove={onMove}
+        onPointerLeave={onLeave}
+        onPointerEnter={() => setHovering(true)}
+        className="relative w-full rounded-lg overflow-hidden cursor-none select-none"
         style={{
-          aspectRatio: `${W} / ${H}`,
-          maxHeight: 580,
+          height: BOX_H,
           background:
-            "radial-gradient(ellipse at 50% 40%, #f6ecd3 0%, #ecdcb3 60%, #d8c089 100%)",
+            "radial-gradient(ellipse at 50% 30%, #f6ecd3 0%, #ecdcb3 60%, #d8c089 100%)",
         }}
       >
-        {/* parchment grain */}
+        {/* Parchment grain */}
         <div
-          className="absolute inset-0 opacity-30 mix-blend-multiply pointer-events-none"
+          className="absolute inset-0 opacity-25 mix-blend-multiply pointer-events-none"
           style={{
             backgroundImage:
               "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.35  0 0 0 0 0.22  0 0 0 0 0.08  0 0 0 0.4 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>\")",
           }}
         />
 
+        {/* Words */}
+        {layout.map((p) => (
+          <span
+            key={p.idx}
+            className="absolute font-serif text-base text-[#3a1a08]"
+            style={{
+              left: p.x,
+              top: p.y,
+              willChange: "transform",
+            }}
+          >
+            {p.text}
+          </span>
+        ))}
+
+        {/* Burning words (briefly visible, embered & fading) */}
+        {burning.map((b) => {
+          const age = (performance.now() / 1000) - b.born;
+          const alpha = Math.max(0, 1 - age / 0.9);
+          const lift = -age * 14;
+          return (
+            <span
+              key={`brn-${b.idx}`}
+              className="absolute font-serif text-base pointer-events-none"
+              style={{
+                left: b.x,
+                top: b.y + lift,
+                color: `rgba(${214 + age * 40}, ${69 - age * 60}, ${31 - age * 30}, ${alpha})`,
+                textShadow: `0 0 ${4 + age * 12}px rgba(255,160,40,${alpha})`,
+                filter: `blur(${age * 1.5}px)`,
+              }}
+            >
+              {b.text}
+            </span>
+          );
+        })}
+
+        {/* Dragon SVG overlay */}
         <svg
-          viewBox={`0 0 ${W} ${H}`}
-          className="absolute inset-0 w-full h-full"
-          preserveAspectRatio="xMidYMid meet"
+          className="absolute inset-0 w-full h-full pointer-events-none"
+          width={size.w}
+          height={BOX_H}
         >
           <defs>
-            <linearGradient id="vermillion" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id="dgVerm" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#d6451f" />
-              <stop offset="55%" stopColor="#a82218" />
+              <stop offset="60%" stopColor="#a82218" />
               <stop offset="100%" stopColor="#6e0f0d" />
             </linearGradient>
-            <linearGradient id="bellyGold" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#f1d27a" />
-              <stop offset="100%" stopColor="#b88726" />
-            </linearGradient>
-            <linearGradient id="wingFront" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#c2342a" />
-              <stop offset="100%" stopColor="#5b110d" />
-            </linearGradient>
-            <linearGradient id="wingBack" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#7d1812" />
-              <stop offset="100%" stopColor="#36080a" />
-            </linearGradient>
-            <radialGradient id="flameGrad" cx="0.5" cy="0.5" r="0.5">
+            <radialGradient id="dgFlame" cx="0.5" cy="0.5" r="0.5">
               <stop offset="0%" stopColor="#fff4c2" />
               <stop offset="35%" stopColor="#ffb43d" />
               <stop offset="75%" stopColor="#d6451f" stopOpacity={0.9} />
               <stop offset="100%" stopColor="#6e0f0d" stopOpacity={0} />
             </radialGradient>
-            <radialGradient id="emberGrad" cx="0.5" cy="0.5" r="0.5">
+            <radialGradient id="dgEmber" cx="0.5" cy="0.5" r="0.5">
               <stop offset="0%" stopColor="#fff8d6" />
               <stop offset="60%" stopColor="#f1c14a" stopOpacity={0.7} />
               <stop offset="100%" stopColor="#f1c14a" stopOpacity={0} />
             </radialGradient>
-            <filter id="paint" x="-10%" y="-10%" width="120%" height="120%">
-              <feTurbulence type="fractalNoise" baseFrequency="1.2" numOctaves="2" />
-              <feDisplacementMap in="SourceGraphic" scale="1.4" />
-            </filter>
-            <filter id="softBlur"><feGaussianBlur stdDeviation="2.5" /></filter>
-            <path id="bodyCurve" d={bodyPath} />
+            <filter id="dgBlur"><feGaussianBlur stdDeviation="2.5" /></filter>
           </defs>
 
-          {/* BACK WING — behind body */}
-          <g
-            transform={`translate(${wing.x - 4} ${wing.y - 6}) rotate(${
-              -22 + Math.sin(t * 3.4) * 10
-            })`}
-          >
-            <path
-              d="M 0 0
-                 Q -10 -42 -34 -64
-                 Q -56 -78 -78 -70
-                 Q -60 -54 -54 -38
-                 Q -38 -28 -30 -14
-                 Q -16 -6 0 0 Z"
-              fill="url(#wingBack)"
-              stroke="#2a0608"
-              strokeWidth={1.4}
-              strokeLinejoin="round"
-            />
-            {/* wing ribs */}
-            <path d="M 0 0 Q -22 -34 -78 -70" stroke="#2a0608" strokeWidth={1} fill="none" />
-            <path d="M 0 0 Q -10 -28 -54 -38" stroke="#2a0608" strokeWidth={1} fill="none" />
-            <path d="M 0 0 Q -4 -16 -30 -14" stroke="#2a0608" strokeWidth={1} fill="none" />
-          </g>
+          {/* Body segments — back-to-front so head is on top */}
+          {[...segs.current].slice().reverse().map((s, ridx) => {
+            const i = segs.current.length - 1 - ridx;
+            return (
+              <g key={`seg-${i}`}>
+                <circle
+                  cx={s.x}
+                  cy={s.y}
+                  r={s.r}
+                  fill="url(#dgVerm)"
+                  stroke="#2a0608"
+                  strokeWidth={1.2}
+                />
+                {/* belly highlight */}
+                <ellipse
+                  cx={s.x}
+                  cy={s.y + s.r * 0.45}
+                  rx={s.r * 0.7}
+                  ry={s.r * 0.25}
+                  fill="#e8b94a"
+                  opacity={0.55}
+                />
+                {/* spine spike */}
+                {i > 0 && i < segs.current.length - 1 && (
+                  <circle cx={s.x} cy={s.y - s.r * 0.7} r={2.4} fill="#e8b94a" />
+                )}
+              </g>
+            );
+          })}
 
-          {/* BODY FILL */}
-          <path d={outline} fill="url(#vermillion)" stroke="#2a0608" strokeWidth={1.6} strokeLinejoin="round" />
-
-          {/* BELLY band — thinner offset path under body for golden underside */}
-          <path d={bellyPath(segments)} fill="url(#bellyGold)" opacity={0.95} stroke="#7a4a14" strokeWidth={0.8} />
-
-          {/* SCALE pattern — small arcs along the top edge */}
-          {scaleArcs(segments).map((a, i) => (
-            <path
-              key={`sc${i}`}
-              d={a.d}
-              fill="none"
-              stroke="#f1d27a"
-              strokeWidth={1}
-              opacity={0.85}
-            />
-          ))}
-
-          {/* SPINES — gold triangular ridges along the dorsal line */}
-          {spineTriangles(segments, t).map((s, i) => (
-            <path key={`sp${i}`} d={s} fill="#e8b94a" stroke="#7a4a14" strokeWidth={0.8} />
-          ))}
-
-          {/* TAIL barb (forked) */}
-          <g transform={`translate(${tail.x} ${tail.y}) rotate(${(tailAngle * 180) / Math.PI})`}>
-            <path
-              d="M 0 0 L -14 -10 L -28 -4 L -22 0 L -28 4 L -14 10 Z"
-              fill="url(#vermillion)"
-              stroke="#2a0608"
-              strokeWidth={1.2}
-              strokeLinejoin="round"
-            />
-          </g>
-
-          {/* FRONT WING — in front of body */}
-          <g
-            transform={`translate(${wing.x + 4} ${wing.y - 8}) rotate(${
-              -8 + Math.sin(t * 3.4 + 0.3) * 14
-            })`}
-          >
-            <path
-              d="M 0 0
-                 Q 6 -50 -10 -78
-                 Q -34 -96 -64 -86
-                 Q -50 -64 -42 -46
-                 Q -28 -34 -18 -22
-                 Q -10 -8 0 0 Z"
-              fill="url(#wingFront)"
-              stroke="#2a0608"
-              strokeWidth={1.4}
-              strokeLinejoin="round"
-            />
-            <path d="M 0 0 Q -12 -52 -64 -86" stroke="#2a0608" strokeWidth={1} fill="none" />
-            <path d="M 0 0 Q -8 -34 -42 -46" stroke="#2a0608" strokeWidth={1} fill="none" />
-            <path d="M 0 0 Q -4 -18 -18 -22" stroke="#2a0608" strokeWidth={1} fill="none" />
-            {/* claw at wing tip */}
-            <circle cx={-64} cy={-86} r={2} fill="#2a0608" />
-          </g>
-
-          {/* HEAD */}
-          <g transform={`translate(${head.x} ${head.y}) rotate(${(headAngle * 180) / Math.PI})`}>
-            {/* horn back */}
-            <path d="M -10 -18 L -22 -34 L -2 -22 Z" fill="#e8b94a" stroke="#2a0608" strokeWidth={1} />
-            {/* horn front */}
-            <path d="M 4 -20 L 8 -38 L 14 -20 Z" fill="#f1d27a" stroke="#2a0608" strokeWidth={1} />
-            {/* ear/fin */}
-            <path d="M -16 -12 Q -28 -10 -22 4 Q -14 0 -10 -4 Z" fill="url(#vermillion)" stroke="#2a0608" strokeWidth={1} />
-
+          {/* Head */}
+          <g transform={`translate(${h.x} ${h.y}) rotate(${(h.dir * 180) / Math.PI})`}>
+            {/* horns */}
+            <path d="M -8 -10 L -14 -22 L -2 -14 Z" fill="#e8b94a" stroke="#2a0608" strokeWidth={0.8} />
+            <path d="M 2 -12 L 4 -24 L 10 -12 Z" fill="#f1d27a" stroke="#2a0608" strokeWidth={0.8} />
             {/* head silhouette */}
             <path
-              d="M -22 -16
-                 Q 8 -22 30 -10
-                 Q 40 -2 38 6
-                 Q 32 18 16 18
-                 Q 4 22 -10 18
-                 Q -26 12 -26 0
-                 Q -28 -8 -22 -16 Z"
-              fill="url(#vermillion)"
+              d="M -14 -10
+                 Q 6 -14 22 -6
+                 Q 28 0 22 8
+                 Q 6 14 -8 12
+                 Q -18 8 -18 0
+                 Q -20 -6 -14 -10 Z"
+              fill="url(#dgVerm)"
               stroke="#2a0608"
-              strokeWidth={1.6}
+              strokeWidth={1.4}
               strokeLinejoin="round"
-            />
-            {/* jaw shadow */}
-            <path
-              d="M -10 18 Q 4 24 16 18 Q 4 16 -10 18 Z"
-              fill="#3a0a08"
-              opacity={0.5}
             />
             {/* mouth open */}
             <path
-              d="M 12 8 Q 26 14 40 4 L 38 6 Q 30 12 18 12 L 14 12 Z"
+              d="M 8 4 Q 18 8 24 0 L 22 4 Q 16 8 10 8 Z"
               fill="#3a0a08"
               stroke="#2a0608"
-              strokeWidth={1.2}
-              strokeLinejoin="round"
+              strokeWidth={0.8}
             />
-            {/* fangs */}
-            <path d="M 18 11 L 19 16 L 21 11 Z" fill="#fff8d6" />
-            <path d="M 30 9 L 31 14 L 33 9 Z" fill="#fff8d6" />
-
-            {/* forked tongue flicks */}
-            <g transform={`translate(38 6)`} opacity={0.5 + 0.5 * Math.sin(t * 7)}>
-              <path
-                d="M 0 0 Q 8 -2 16 -1 L 22 -4 L 18 0 L 22 4 L 16 1 Q 8 2 0 0 Z"
-                fill="#c2342a"
-                stroke="#6e0f0d"
-                strokeWidth={0.8}
-              />
-            </g>
-
+            {/* fang */}
+            <path d="M 14 6 L 15 9 L 17 6 Z" fill="#fff8d6" />
             {/* nostril */}
-            <ellipse cx={32} cy={-2} rx={2} ry={1.4} fill="#2a0608" />
-            <circle cx={31} cy={-3} r={0.5} fill="#fff8d6" opacity={0.6} />
-
-            {/* eye socket */}
-            <ellipse cx={6} cy={-4} rx={7} ry={5.5} fill="#fff8d6" stroke="#2a0608" strokeWidth={1} />
-            {/* iris */}
-            <ellipse cx={7} cy={-4} rx={3} ry={5 * blink} fill="#e8b94a" />
-            {/* slit pupil */}
-            <ellipse cx={7} cy={-4} rx={1} ry={4.5 * blink} fill="#2a0608" />
-            {/* eye shine */}
-            <circle cx={6} cy={-6} r={0.9 * blink} fill="#fff" />
-
-            {/* cheek scales — small arcs */}
-            <path d="M -16 4 Q -10 6 -4 4" stroke="#7a4a14" strokeWidth={0.8} fill="none" />
-            <path d="M -16 -2 Q -10 0 -4 -2" stroke="#7a4a14" strokeWidth={0.8} fill="none" />
-            <path d="M -8 10 Q -2 12 6 10" stroke="#3a0a08" strokeWidth={0.8} fill="none" opacity={0.6} />
+            <ellipse cx={20} cy={-2} rx={1.4} ry={0.9} fill="#2a0608" />
+            {/* eye */}
+            <ellipse cx={4} cy={-3} rx={4.5} ry={3.5} fill="#fff8d6" stroke="#2a0608" strokeWidth={0.8} />
+            <ellipse cx={4.5} cy={-3} rx={1.8} ry={3 * blink.current} fill="#e8b94a" />
+            <ellipse cx={4.5} cy={-3} rx={0.7} ry={2.6 * blink.current} fill="#2a0608" />
           </g>
 
-          {/* FIRE — painted swirling puffs from the mouth */}
-          {flamesRef.current.map((f) => {
+          {/* Fire particles */}
+          {fire.current.map((f) => {
+            const t = performance.now() / 1000;
             const age = t - f.born;
-            if (age < 0 || age > 1.4) return null;
-            const ox = head.x + Math.cos(headAngle) * 38;
-            const oy = head.y + Math.sin(headAngle) * 38 + 4;
+            if (age < 0 || age > 1) return null;
+            const ox = h.x + Math.cos(h.dir) * 22;
+            const oy = h.y + Math.sin(h.dir) * 22;
             const dist = age * f.speed;
-            const fx = ox + Math.cos(headAngle + f.angle) * dist;
-            const fy =
-              oy + Math.sin(headAngle + f.angle) * dist - age * age * 18;
-            const r = (1 - age / 1.4) * 22 * f.scale + 3;
-            const isEmber = f.hue > 0.7;
+            const fx = ox + Math.cos(h.dir + f.angle) * dist;
+            const fy = oy + Math.sin(h.dir + f.angle) * dist;
+            const r = (1 - age) * 14 * f.scale + 2;
             return (
               <circle
                 key={f.id}
                 cx={fx}
                 cy={fy}
                 r={r}
-                fill={isEmber ? "url(#emberGrad)" : "url(#flameGrad)"}
-                opacity={Math.max(0, 1 - age / 1.4)}
-                filter={age > 0.5 ? "url(#softBlur)" : undefined}
+                fill={f.ember ? "url(#dgEmber)" : "url(#dgFlame)"}
+                opacity={Math.max(0, 1 - age)}
+                filter={age > 0.4 ? "url(#dgBlur)" : undefined}
               />
             );
           })}
-
-          {/* TEXT along body curve */}
-          <text
-            fill="#3a1a08"
-            fontFamily="Fraunces, serif"
-            fontSize={11}
-            fontWeight={600}
-            letterSpacing={0.5}
-            opacity={0.8}
-          >
-            <textPath href="#bodyCurve" startOffset={`${(t * 4) % 100}%`}>
-              {sentence + "  ❦  " + sentence}
-            </textPath>
-          </text>
         </svg>
+
+        {!hovering && (
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-xs font-medium tracking-wide uppercase text-foreground/60 bg-white/60 backdrop-blur px-3 py-1.5 rounded-full pointer-events-none">
+            Move your mouse to wake the dragon
+          </div>
+        )}
+
+        {score === total && total > 0 && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="bg-white/90 backdrop-blur px-6 py-4 rounded-lg shadow-lg text-center pointer-events-auto">
+              <p className="font-serif text-xl text-foreground">Nothing left to read.</p>
+              <Button size="sm" variant="outline" className="mt-3" onClick={restoreAll}>
+                <RotateCcw className="w-3 h-3 mr-1.5" /> Restore the manuscript
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </ShowcaseCard>
   );
 }
 
-// Smooth Catmull-Rom-ish path through control points
-function pathThrough(pts: { x: number; y: number }[]) {
-  if (pts.length < 2) return "";
-  let d = `M ${pts[0].x} ${pts[0].y}`;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[Math.max(0, i - 1)];
-    const p1 = pts[i];
-    const p2 = pts[i + 1];
-    const p3 = pts[Math.min(pts.length - 1, i + 2)];
-    const cp1x = p1.x + (p2.x - p0.x) / 6;
-    const cp1y = p1.y + (p2.y - p0.y) / 6;
-    const cp2x = p2.x - (p3.x - p1.x) / 6;
-    const cp2y = p2.y - (p3.y - p1.y) / 6;
-    d += ` C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${p2.x} ${p2.y}`;
-  }
+function segRadius(i: number) {
+  // Thick at the front (i=0) tapering to tail
+  if (i < 2) return 13 - i * 0.5;
+  if (i < 5) return 12 - (i - 2) * 1.2;
+  return Math.max(3, 9 - (i - 5) * 1.4);
+}
+
+function angleDelta(a: number, b: number) {
+  let d = b - a;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
   return d;
-}
-
-// Create a closed outline by walking the segment centerline with perpendicular offsets
-function bodyOutline(segments: { x: number; y: number; r: number }[]) {
-  const top: { x: number; y: number }[] = [];
-  const bot: { x: number; y: number }[] = [];
-  for (let i = 0; i < segments.length; i++) {
-    const s = segments[i];
-    const prev = segments[Math.max(0, i - 1)];
-    const next = segments[Math.min(segments.length - 1, i + 1)];
-    const ang = Math.atan2(next.y - prev.y, next.x - prev.x);
-    const nx = -Math.sin(ang);
-    const ny = Math.cos(ang);
-    top.push({ x: s.x + nx * s.r, y: s.y + ny * s.r });
-    bot.push({ x: s.x - nx * s.r, y: s.y - ny * s.r });
-  }
-  return pathThrough(top) + " " + pathThrough(bot.reverse()).replace(/^M/, "L") + " Z";
-}
-
-// Belly: lower half of the body, slightly inset, tracking the underside
-function bellyPath(segments: { x: number; y: number; r: number }[]) {
-  const top: { x: number; y: number }[] = [];
-  const bot: { x: number; y: number }[] = [];
-  for (let i = 0; i < segments.length; i++) {
-    const s = segments[i];
-    const prev = segments[Math.max(0, i - 1)];
-    const next = segments[Math.min(segments.length - 1, i + 1)];
-    const ang = Math.atan2(next.y - prev.y, next.x - prev.x);
-    const nx = -Math.sin(ang);
-    const ny = Math.cos(ang);
-    const inset = s.r * 0.2;
-    top.push({ x: s.x - nx * (s.r * 0.05), y: s.y - ny * (s.r * 0.05) });
-    bot.push({ x: s.x - nx * (s.r - inset), y: s.y - ny * (s.r - inset) });
-  }
-  return pathThrough(top) + " " + pathThrough(bot.reverse()).replace(/^M/, "L") + " Z";
-}
-
-// Repeated small scallop arcs along the top of the body
-function scaleArcs(segments: { x: number; y: number; r: number }[]) {
-  const arcs: { d: string }[] = [];
-  for (let i = 1; i < segments.length - 1; i++) {
-    const s = segments[i];
-    const prev = segments[i - 1];
-    const next = segments[i + 1];
-    const ang = Math.atan2(next.y - prev.y, next.x - prev.x);
-    const nx = -Math.sin(ang);
-    const ny = Math.cos(ang);
-    // place 2 scales along the segment width
-    for (let k = -1; k <= 1; k += 1) {
-      const offset = k * s.r * 0.45;
-      const cx = s.x + Math.cos(ang) * offset;
-      const cy = s.y + Math.sin(ang) * offset;
-      const baseX = cx + nx * s.r * 0.55;
-      const baseY = cy + ny * s.r * 0.55;
-      const wid = Math.max(2.5, s.r * 0.35);
-      const ax = baseX + Math.cos(ang) * wid;
-      const ay = baseY + Math.sin(ang) * wid;
-      const bx = baseX - Math.cos(ang) * wid;
-      const by = baseY - Math.sin(ang) * wid;
-      const peakX = baseX + nx * wid * 0.6;
-      const peakY = baseY + ny * wid * 0.6;
-      arcs.push({ d: `M ${bx} ${by} Q ${peakX} ${peakY} ${ax} ${ay}` });
-    }
-  }
-  return arcs;
-}
-
-// Triangular dorsal spines pointing outward (top) along the body
-function spineTriangles(segments: { x: number; y: number; r: number }[], t: number) {
-  const tris: string[] = [];
-  for (let i = 2; i < segments.length - 2; i += 1) {
-    const s = segments[i];
-    const prev = segments[i - 1];
-    const next = segments[i + 1];
-    const ang = Math.atan2(next.y - prev.y, next.x - prev.x);
-    const nx = -Math.sin(ang);
-    const ny = Math.cos(ang);
-    const baseX = s.x + nx * s.r * 0.95;
-    const baseY = s.y + ny * s.r * 0.95;
-    const w = Math.max(2, s.r * 0.28);
-    const h = Math.max(4, s.r * 0.55) + Math.sin(t * 2 + i * 0.4) * 0.6;
-    const ax = baseX + Math.cos(ang) * w;
-    const ay = baseY + Math.sin(ang) * w;
-    const bx = baseX - Math.cos(ang) * w;
-    const by = baseY - Math.sin(ang) * w;
-    const px = baseX + nx * h;
-    const py = baseY + ny * h;
-    tris.push(`M ${bx} ${by} L ${px} ${py} L ${ax} ${ay} Z`);
-  }
-  return tris;
 }
