@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Pretext Playground"
+version = "1.0.0"
+id = "artifacts/pretext-playground"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18882
+
+[services.development]
+run = "pnpm --filter @workspace/pretext-playground run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/pretext-playground", "run", "build" ]
+publicDir = "artifacts/pretext-playground/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18882"
+BASE_PATH = "/"
