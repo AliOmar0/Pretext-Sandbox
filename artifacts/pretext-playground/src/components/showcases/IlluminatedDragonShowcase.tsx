@@ -1,43 +1,42 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePlayground } from "@/lib/playground-context";
 import { ShowcaseCard } from "@/components/ShowcaseCard";
-import { Button } from "@/components/ui/button";
-import { layoutAround } from "@/lib/flow-around";
-import { Flame, RotateCcw } from "lucide-react";
+import { layoutAround, type Obstacle } from "@/lib/flow-around";
 
 const FONT = "16px Fraunces, serif";
 const LINE_H = 26;
 const BOX_H = 420;
 const SEG_COUNT = 11;
 const LINK = 13;
-const FIRE_RANGE = 130;
-const FIRE_HALF_ANGLE = Math.PI / 7; // ~25.7°
 
 interface Seg { x: number; y: number; r: number }
-interface Burning { idx: number; text: string; x: number; y: number; w: number; born: number }
-interface FireParticle { id: number; born: number; angle: number; speed: number; scale: number; ember: boolean }
+interface FireParticle {
+  id: number;
+  born: number;
+  // position + velocity in pixels & px/sec
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  scale: number;
+  ember: boolean;
+  life: number; // total seconds before dying
+}
 
 export function IlluminatedDragonShowcase() {
   const { text } = usePlayground();
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const [size, setSize] = useState({ w: 700, h: BOX_H });
-  const [burnedSet, setBurnedSet] = useState<Set<number>>(new Set());
-  const [burning, setBurning] = useState<Burning[]>([]);
   const [hovering, setHovering] = useState(false);
-  const [tick, setTick] = useState(0);
+  const [, setTick] = useState(0);
 
-  // Reset burned set when source text changes
   const words = useMemo(
     () => text.replace(/\s+/g, " ").trim().split(" "),
     [text],
   );
-  useEffect(() => {
-    setBurnedSet(new Set());
-    setBurning([]);
-  }, [words.join(" ")]);
 
-  // Mutable refs (avoid React re-render storms)
+  // Mutable refs for animation state
   const head = useRef({ x: 200, y: 60, dir: 0 });
   const target = useRef({ x: 200, y: 60 });
   const segs = useRef<Seg[]>(
@@ -50,9 +49,10 @@ export function IlluminatedDragonShowcase() {
   const fire = useRef<FireParticle[]>([]);
   const fireId = useRef(0);
   const lastFire = useRef(0);
+  const breathing = useRef(false);
   const blink = useRef(1);
   const lastBlink = useRef(0);
-  const layoutCacheRef = useRef<{ idx: number; text: string; x: number; y: number; w: number }[]>([]);
+  const lastFrame = useRef(performance.now());
 
   // Resize observer
   useEffect(() => {
@@ -75,16 +75,16 @@ export function IlluminatedDragonShowcase() {
     let raf = 0;
     const loop = (now: number) => {
       const t = now / 1000;
+      const dt = Math.min(0.05, (now - lastFrame.current) / 1000);
+      lastFrame.current = now;
 
-      // Steer head toward target with easing
+      // Steer head toward target
       const h = head.current;
-      const tgt = target.current;
       const ease = hovering ? 0.18 : 0.04;
-      h.x += (tgt.x - h.x) * ease;
-      h.y += (tgt.y - h.y) * ease;
-      // Direction = vector toward target (so dragon faces motion even at rest)
-      const ddx = tgt.x - h.x;
-      const ddy = tgt.y - h.y;
+      h.x += (target.current.x - h.x) * ease;
+      h.y += (target.current.y - h.y) * ease;
+      const ddx = target.current.x - h.x;
+      const ddy = target.current.y - h.y;
       if (Math.hypot(ddx, ddy) > 1) {
         h.dir = h.dir + angleDelta(h.dir, Math.atan2(ddy, ddx)) * 0.2;
       }
@@ -102,7 +102,7 @@ export function IlluminatedDragonShowcase() {
         prev = { x: s.x, y: s.y };
       }
 
-      // Blink occasionally
+      // Blink
       if (now - lastBlink.current > 2800) {
         blink.current = 0;
         if (now - lastBlink.current > 2940) {
@@ -111,73 +111,51 @@ export function IlluminatedDragonShowcase() {
         }
       }
 
-      // Spawn fire when hovering and breathing
-      if (hovering && now - lastFire.current > 32) {
+      // Spawn fire while breathing (mouse held)
+      if (breathing.current && now - lastFire.current > 28) {
         lastFire.current = now;
+        const speed = 280 + Math.random() * 140;
+        const spread = (Math.random() - 0.5) * 0.45;
+        const ang = h.dir + spread;
+        const ox = h.x + Math.cos(h.dir) * 22;
+        const oy = h.y + Math.sin(h.dir) * 22;
         fire.current.push({
           id: fireId.current++,
           born: t,
-          angle: (Math.random() - 0.5) * FIRE_HALF_ANGLE * 1.4,
-          speed: 90 + Math.random() * 80,
-          scale: 0.65 + Math.random() * 0.7,
+          x: ox,
+          y: oy,
+          vx: Math.cos(ang) * speed,
+          vy: Math.sin(ang) * speed,
+          scale: 0.7 + Math.random() * 0.7,
           ember: Math.random() > 0.78,
+          life: 0.9 + Math.random() * 0.3,
         });
       }
-      // Cull old fire
-      fire.current = fire.current.filter((f) => t - f.born < 1.0);
 
-      // Hit-test alive words against fire cone
-      if (hovering && layoutCacheRef.current.length) {
-        const ox = h.x + Math.cos(h.dir) * 22;
-        const oy = h.y + Math.sin(h.dir) * 22;
-        const ignite: Burning[] = [];
-        for (const wp of layoutCacheRef.current) {
-          if (burnedSet.has(wp.idx)) continue;
-          // word center in obstacle-local coords; convert to absolute pixels:
-          // layout positions are already local to container (0,0)
-          const cx = wp.x + wp.w / 2;
-          const cy = wp.y + LINE_H / 2;
-          const dx = cx - ox;
-          const dy = cy - oy;
-          const dist = Math.hypot(dx, dy);
-          if (dist > FIRE_RANGE) continue;
-          const ang = Math.atan2(dy, dx);
-          const diff = Math.abs(angleDelta(h.dir, ang));
-          if (diff < FIRE_HALF_ANGLE) {
-            ignite.push({ idx: wp.idx, text: wp.text, x: wp.x, y: wp.y, w: wp.w, born: t });
-          }
-        }
-        if (ignite.length) {
-          setBurnedSet((prev) => {
-            const next = new Set(prev);
-            ignite.forEach((b) => next.add(b.idx));
-            return next;
-          });
-          setBurning((prev) => [...prev, ...ignite]);
-        }
+      // Integrate fire
+      for (const f of fire.current) {
+        f.x += f.vx * dt;
+        f.y += f.vy * dt;
+        // mild upward drift + drag
+        f.vy -= 60 * dt;
+        f.vx *= 0.985;
+        f.vy *= 0.985;
       }
-
-      // Cull finished burns (after 0.9s)
-      if (burning.length) {
-        const stillBurning = burning.filter((b) => t - b.born < 0.9);
-        if (stillBurning.length !== burning.length) setBurning(stillBurning);
-      }
+      fire.current = fire.current.filter((f) => t - f.born < f.life);
 
       setTick((x) => (x + 1) % 1_000_000);
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [hovering, burnedSet, burning]);
+  }, [hovering]);
 
-  // Layout text around the dragon's bounding box (head + first few thick segments)
-  const aliveList = useMemo(
-    () => words.map((w, i) => ({ text: w, idx: i })).filter((w) => !burnedSet.has(w.idx)),
-    [words, burnedSet],
-  );
+  // Build obstacles: dragon body + each fire particle (as a small box).
+  // Recomputed every animation frame via the tick state below.
+  const obstacles: Obstacle[] = (() => {
+    const list: Obstacle[] = [];
 
-  const obstacle = useMemo(() => {
-    // Cover head + first 4 thick body segments — small bounding box that text wraps around
+    // Dragon body — single bbox covering head + first 5 thick segments
     const pts = [{ x: head.current.x, y: head.current.y }, ...segs.current.slice(0, 5)];
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const p of pts) {
@@ -187,37 +165,39 @@ export function IlluminatedDragonShowcase() {
       maxY = Math.max(maxY, p.y);
     }
     const pad = 22;
-    return {
+    list.push({
       x: Math.max(0, minX - pad),
       y: Math.max(0, minY - pad),
       w: maxX - minX + pad * 2,
       h: maxY - minY + pad * 2,
-    };
-    // Recompute every tick (head moves)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tick]);
+    });
 
-  const layout = useMemo(() => {
-    const positions = layoutAround(
-      aliveList.map((a) => a.text),
-      size.w - 16,
-      size.h - 16,
-      LINE_H,
-      FONT,
-      obstacle,
-    );
-    const out = positions.map((p, i) => ({
-      idx: aliveList[i].idx,
-      text: p.text,
-      x: p.x + 8,
-      y: p.y + 8,
-      w: p.w,
-    }));
-    layoutCacheRef.current = out;
-    return out;
-  }, [aliveList, size.w, size.h, obstacle]);
+    // Fire — each particle as a small obstacle (text reflows around the projectile)
+    const t = performance.now() / 1000;
+    for (const f of fire.current) {
+      const age = t - f.born;
+      const lifeFrac = age / f.life;
+      const r = (1 - lifeFrac) * 16 * f.scale + 4;
+      list.push({
+        x: f.x - r - 2,
+        y: f.y - r - 2,
+        w: r * 2 + 4,
+        h: r * 2 + 4,
+      });
+    }
+    return list;
+  })();
 
-  // Mouse handlers
+  const layout = layoutAround(
+    words,
+    size.w - 16,
+    size.h - 16,
+    LINE_H,
+    FONT,
+    obstacles,
+  ).map((p) => ({ ...p, x: p.x + 8, y: p.y + 8 }));
+
+  // Pointer handlers
   const onMove = (e: React.PointerEvent) => {
     const wrap = wrapRef.current;
     if (!wrap) return;
@@ -226,49 +206,45 @@ export function IlluminatedDragonShowcase() {
     target.current.y = e.clientY - r.top;
     setHovering(true);
   };
-  const onLeave = () => setHovering(false);
-
-  const restoreAll = () => {
-    setBurnedSet(new Set());
-    setBurning([]);
+  const onLeave = () => {
+    setHovering(false);
+    breathing.current = false;
+  };
+  const onDown = (e: React.PointerEvent) => {
+    const wrap = wrapRef.current;
+    if (wrap) wrap.setPointerCapture(e.pointerId);
+    breathing.current = true;
+  };
+  const onUp = (e: React.PointerEvent) => {
+    const wrap = wrapRef.current;
+    if (wrap) {
+      try { wrap.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+    }
+    breathing.current = false;
   };
 
-  const score = burnedSet.size;
-  const total = words.length;
   const h = head.current;
 
   return (
     <ShowcaseCard
       showcaseId="illuminated-dragon"
       title="Illuminated Dragon"
-      description="Move your mouse — the dragon hunts your words and burns them to ash."
-      controls={
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-mono text-muted-foreground tabular-nums">
-            <Flame className="inline w-3.5 h-3.5 mr-1 -mt-0.5 text-primary" />
-            {score} / {total}
-          </span>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={restoreAll}
-            disabled={score === 0 && burning.length === 0}
-          >
-            <RotateCcw className="w-3 h-3 mr-1.5" /> Restore
-          </Button>
-        </div>
-      }
+      description="Move your mouse to steer the dragon. Click and hold to breathe fire — the text scatters from both."
     >
       <div
         ref={wrapRef}
         onPointerMove={onMove}
         onPointerLeave={onLeave}
         onPointerEnter={() => setHovering(true)}
+        onPointerDown={onDown}
+        onPointerUp={onUp}
+        onPointerCancel={onUp}
         className="relative w-full rounded-lg overflow-hidden cursor-none select-none"
         style={{
           height: BOX_H,
           background:
             "radial-gradient(ellipse at 50% 30%, #f6ecd3 0%, #ecdcb3 60%, #d8c089 100%)",
+          touchAction: "none",
         }}
       >
         {/* Parchment grain */}
@@ -281,43 +257,17 @@ export function IlluminatedDragonShowcase() {
         />
 
         {/* Words */}
-        {layout.map((p) => (
+        {layout.map((p, i) => (
           <span
-            key={p.idx}
+            key={i}
             className="absolute font-serif text-base text-[#3a1a08]"
-            style={{
-              left: p.x,
-              top: p.y,
-              willChange: "transform",
-            }}
+            style={{ left: p.x, top: p.y, willChange: "transform" }}
           >
             {p.text}
           </span>
         ))}
 
-        {/* Burning words (briefly visible, embered & fading) */}
-        {burning.map((b) => {
-          const age = (performance.now() / 1000) - b.born;
-          const alpha = Math.max(0, 1 - age / 0.9);
-          const lift = -age * 14;
-          return (
-            <span
-              key={`brn-${b.idx}`}
-              className="absolute font-serif text-base pointer-events-none"
-              style={{
-                left: b.x,
-                top: b.y + lift,
-                color: `rgba(${214 + age * 40}, ${69 - age * 60}, ${31 - age * 30}, ${alpha})`,
-                textShadow: `0 0 ${4 + age * 12}px rgba(255,160,40,${alpha})`,
-                filter: `blur(${age * 1.5}px)`,
-              }}
-            >
-              {b.text}
-            </span>
-          );
-        })}
-
-        {/* Dragon SVG overlay */}
+        {/* Dragon + Fire SVG overlay */}
         <svg
           className="absolute inset-0 w-full h-full pointer-events-none"
           width={size.w}
@@ -343,29 +293,13 @@ export function IlluminatedDragonShowcase() {
             <filter id="dgBlur"><feGaussianBlur stdDeviation="2.5" /></filter>
           </defs>
 
-          {/* Body segments — back-to-front so head is on top */}
+          {/* Body — back to front */}
           {[...segs.current].slice().reverse().map((s, ridx) => {
             const i = segs.current.length - 1 - ridx;
             return (
               <g key={`seg-${i}`}>
-                <circle
-                  cx={s.x}
-                  cy={s.y}
-                  r={s.r}
-                  fill="url(#dgVerm)"
-                  stroke="#2a0608"
-                  strokeWidth={1.2}
-                />
-                {/* belly highlight */}
-                <ellipse
-                  cx={s.x}
-                  cy={s.y + s.r * 0.45}
-                  rx={s.r * 0.7}
-                  ry={s.r * 0.25}
-                  fill="#e8b94a"
-                  opacity={0.55}
-                />
-                {/* spine spike */}
+                <circle cx={s.x} cy={s.y} r={s.r} fill="url(#dgVerm)" stroke="#2a0608" strokeWidth={1.2} />
+                <ellipse cx={s.x} cy={s.y + s.r * 0.45} rx={s.r * 0.7} ry={s.r * 0.25} fill="#e8b94a" opacity={0.55} />
                 {i > 0 && i < segs.current.length - 1 && (
                   <circle cx={s.x} cy={s.y - s.r * 0.7} r={2.4} fill="#e8b94a" />
                 )}
@@ -375,59 +309,45 @@ export function IlluminatedDragonShowcase() {
 
           {/* Head */}
           <g transform={`translate(${h.x} ${h.y}) rotate(${(h.dir * 180) / Math.PI})`}>
-            {/* horns */}
             <path d="M -8 -10 L -14 -22 L -2 -14 Z" fill="#e8b94a" stroke="#2a0608" strokeWidth={0.8} />
             <path d="M 2 -12 L 4 -24 L 10 -12 Z" fill="#f1d27a" stroke="#2a0608" strokeWidth={0.8} />
-            {/* head silhouette */}
             <path
-              d="M -14 -10
-                 Q 6 -14 22 -6
-                 Q 28 0 22 8
-                 Q 6 14 -8 12
-                 Q -18 8 -18 0
-                 Q -20 -6 -14 -10 Z"
+              d="M -14 -10 Q 6 -14 22 -6 Q 28 0 22 8 Q 6 14 -8 12 Q -18 8 -18 0 Q -20 -6 -14 -10 Z"
               fill="url(#dgVerm)"
               stroke="#2a0608"
               strokeWidth={1.4}
               strokeLinejoin="round"
             />
-            {/* mouth open */}
             <path
               d="M 8 4 Q 18 8 24 0 L 22 4 Q 16 8 10 8 Z"
               fill="#3a0a08"
               stroke="#2a0608"
               strokeWidth={0.8}
             />
-            {/* fang */}
             <path d="M 14 6 L 15 9 L 17 6 Z" fill="#fff8d6" />
-            {/* nostril */}
             <ellipse cx={20} cy={-2} rx={1.4} ry={0.9} fill="#2a0608" />
-            {/* eye */}
             <ellipse cx={4} cy={-3} rx={4.5} ry={3.5} fill="#fff8d6" stroke="#2a0608" strokeWidth={0.8} />
             <ellipse cx={4.5} cy={-3} rx={1.8} ry={3 * blink.current} fill="#e8b94a" />
             <ellipse cx={4.5} cy={-3} rx={0.7} ry={2.6 * blink.current} fill="#2a0608" />
           </g>
 
-          {/* Fire particles */}
+          {/* Fire projectiles */}
           {fire.current.map((f) => {
             const t = performance.now() / 1000;
             const age = t - f.born;
-            if (age < 0 || age > 1) return null;
-            const ox = h.x + Math.cos(h.dir) * 22;
-            const oy = h.y + Math.sin(h.dir) * 22;
-            const dist = age * f.speed;
-            const fx = ox + Math.cos(h.dir + f.angle) * dist;
-            const fy = oy + Math.sin(h.dir + f.angle) * dist;
-            const r = (1 - age) * 14 * f.scale + 2;
+            const lifeFrac = age / f.life;
+            if (lifeFrac < 0 || lifeFrac > 1) return null;
+            const r = (1 - lifeFrac) * 16 * f.scale + 4;
+            const opacity = Math.max(0, 1 - lifeFrac);
             return (
               <circle
                 key={f.id}
-                cx={fx}
-                cy={fy}
+                cx={f.x}
+                cy={f.y}
                 r={r}
                 fill={f.ember ? "url(#dgEmber)" : "url(#dgFlame)"}
-                opacity={Math.max(0, 1 - age)}
-                filter={age > 0.4 ? "url(#dgBlur)" : undefined}
+                opacity={opacity}
+                filter={lifeFrac > 0.4 ? "url(#dgBlur)" : undefined}
               />
             );
           })}
@@ -435,18 +355,7 @@ export function IlluminatedDragonShowcase() {
 
         {!hovering && (
           <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-xs font-medium tracking-wide uppercase text-foreground/60 bg-white/60 backdrop-blur px-3 py-1.5 rounded-full pointer-events-none">
-            Move your mouse to wake the dragon
-          </div>
-        )}
-
-        {score === total && total > 0 && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="bg-white/90 backdrop-blur px-6 py-4 rounded-lg shadow-lg text-center pointer-events-auto">
-              <p className="font-serif text-xl text-foreground">Nothing left to read.</p>
-              <Button size="sm" variant="outline" className="mt-3" onClick={restoreAll}>
-                <RotateCcw className="w-3 h-3 mr-1.5" /> Restore the manuscript
-              </Button>
-            </div>
+            Move your mouse · click to breathe fire
           </div>
         )}
       </div>
@@ -455,7 +364,6 @@ export function IlluminatedDragonShowcase() {
 }
 
 function segRadius(i: number) {
-  // Thick at the front (i=0) tapering to tail
   if (i < 2) return 13 - i * 0.5;
   if (i < 5) return 12 - (i - 2) * 1.2;
   return Math.max(3, 9 - (i - 5) * 1.4);
