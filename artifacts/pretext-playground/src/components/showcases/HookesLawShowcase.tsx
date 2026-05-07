@@ -104,6 +104,7 @@ export function HookesLawShowcase() {
 
   return (
     <ShowcaseCard
+      showcaseId="hookes-law"
       title="Hooke's Law"
       description="Drag the ball, let it spring. Text reflows around the live simulation."
     >

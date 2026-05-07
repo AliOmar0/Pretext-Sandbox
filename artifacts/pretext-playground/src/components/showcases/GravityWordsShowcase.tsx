@@ -137,6 +137,7 @@ export function GravityWordsShowcase() {
 
   return (
     <ShowcaseCard
+      showcaseId="gravity-words"
       title="Gravity Words"
       description="Each word is a falling brick. Stack them, shake them, repeat."
       controls={

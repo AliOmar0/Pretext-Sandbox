@@ -33,13 +33,15 @@ export function WebIsInterestingAgainShowcase() {
   const chars = headline.split("");
   return (
     <ShowcaseCard
+      showcaseId="web-is-interesting"
       title="The Web Is Interesting Again"
       description="A little wanderer walks across the page. The text leans away as it passes."
     >
       <div
         className="relative w-full rounded-lg overflow-hidden"
         style={{
-          height: H,
+          aspectRatio: `${W} / ${H}`,
+          maxHeight: 540,
           background:
             "linear-gradient(180deg, #fff8ee 0%, #f5e9d2 70%, #d8b88a 100%)",
         }}

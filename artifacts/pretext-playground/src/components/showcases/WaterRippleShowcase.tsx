@@ -77,6 +77,7 @@ export function WaterRippleShowcase() {
   const now = Date.now();
   return (
     <ShowcaseCard
+      showcaseId="water-ripple"
       title="Water Ripple"
       description="Click anywhere to drop a ripple. Letters bob on the surface."
     >

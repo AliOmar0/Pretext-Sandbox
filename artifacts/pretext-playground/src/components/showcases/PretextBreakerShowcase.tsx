@@ -119,6 +119,7 @@ export function PretextBreakerShowcase() {
 
   return (
     <ShowcaseCard
+      showcaseId="pretext-breaker"
       title="Pretext Breaker"
       description="Move your mouse to play. Break every word."
       controls={

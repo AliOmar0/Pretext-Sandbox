@@ -121,6 +121,7 @@ export function FluidInterfacesShowcase() {
 
   return (
     <ShowcaseCard
+      showcaseId="fluid-interfaces"
       title="Fluid Interfaces"
       description="Underlined words reveal a tiny illustration inline. Text reflows live."
     >

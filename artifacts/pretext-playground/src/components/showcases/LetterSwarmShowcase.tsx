@@ -150,6 +150,7 @@ export function LetterSwarmShowcase() {
 
   return (
     <ShowcaseCard
+      showcaseId="letter-swarm"
       title="Letter Swarm"
       description="Letters flock to their reading positions. Move your cursor to scatter them."
     >

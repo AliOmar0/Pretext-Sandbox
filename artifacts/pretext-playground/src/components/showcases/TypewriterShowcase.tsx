@@ -57,6 +57,7 @@ export function TypewriterShowcase() {
 
   return (
     <ShowcaseCard
+      showcaseId="typewriter"
       title="Typewriter Reveal"
       description="The first paragraph types itself out, pauses, then unwinds. Forever."
     >

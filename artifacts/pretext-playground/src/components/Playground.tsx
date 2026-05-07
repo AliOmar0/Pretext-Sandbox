@@ -1,81 +1,48 @@
-import { useState } from "react";
-import { PlaygroundContext } from "@/lib/playground-context";
 import { Hero } from "@/components/Hero";
 import { TextInputPanel } from "@/components/TextInputPanel";
-import { FluidInterfacesShowcase } from "@/components/showcases/FluidInterfacesShowcase";
-import { WebIsInterestingAgainShowcase } from "@/components/showcases/WebIsInterestingAgainShowcase";
-import { PretextBreakerShowcase } from "@/components/showcases/PretextBreakerShowcase";
-import { WaterRippleShowcase } from "@/components/showcases/WaterRippleShowcase";
-import { IlluminatedDragonShowcase } from "@/components/showcases/IlluminatedDragonShowcase";
-import { HookesLawShowcase } from "@/components/showcases/HookesLawShowcase";
-import { VariableAsciiShowcase } from "@/components/showcases/VariableAsciiShowcase";
-import { MagicalTimeShowcase } from "@/components/showcases/MagicalTimeShowcase";
-import { AsciiRainShowcase } from "@/components/showcases/AsciiRainShowcase";
-import { GravityWordsShowcase } from "@/components/showcases/GravityWordsShowcase";
-import { TypewriterShowcase } from "@/components/showcases/TypewriterShowcase";
-import { ConstellationShowcase } from "@/components/showcases/ConstellationShowcase";
-import { LetterSwarmShowcase } from "@/components/showcases/LetterSwarmShowcase";
 import { Footer } from "@/components/Footer";
-
-const DEFAULT_TEXT = `Typography is the art and technique of arranging type to make written language legible, readable, and appealing when displayed. The arrangement of type involves selecting typefaces, point sizes, line lengths, line-spacing, and letter-spacing, and adjusting the space between pairs of letters. 
-
-The term typography is also applied to the style, arrangement, and appearance of the letters, numbers, and symbols created by the process. Type design is a closely related craft, sometimes considered part of typography; most typographers do not design typefaces, and some type designers do not consider themselves typographers.
-
-"The web is interesting again," she said, leaning forward. When text flows like water around obstacles, when the spacing breathes with the window, it feels alive. CSS has finally given us the tools that print designers have had for decades, and we are just beginning to explore what it means to build truly fluid interfaces.`;
+import { SHOWCASES } from "@/lib/showcase-registry";
 
 export function Playground() {
-  const [text, setText] = useState(DEFAULT_TEXT);
+  const community = SHOWCASES.filter((s) => s.group === "community");
+  const originals = SHOWCASES.filter((s) => s.group === "originals");
 
   return (
-    <PlaygroundContext.Provider value={{ text, setText, defaultText: DEFAULT_TEXT }}>
-      <div className="min-h-screen w-full flex flex-col bg-background">
-        <Hero />
+    <div className="min-h-screen w-full flex flex-col bg-background">
+      <Hero />
+      <main className="container mx-auto px-4 md:px-8 max-w-6xl flex flex-col gap-24 mt-12 flex-1">
+        <TextInputPanel />
 
-        <main className="container mx-auto px-4 md:px-8 max-w-6xl flex flex-col gap-24 mt-12 flex-1">
-          <TextInputPanel />
+        <SectionGroup title="Community Showcase" entries={community} />
+        <SectionGroup title="Originals" entries={originals} />
+      </main>
+      <Footer />
+    </div>
+  );
+}
 
-          <div className="flex flex-col gap-12">
-            <div className="flex items-center gap-4">
-              <div className="h-px bg-border flex-1" />
-              <h2 className="text-3xl font-serif font-semibold tracking-tight text-foreground uppercase">
-                Community Showcase
-              </h2>
-              <div className="h-px bg-border flex-1" />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <WebIsInterestingAgainShowcase />
-              <VariableAsciiShowcase />
-              <IlluminatedDragonShowcase />
-              <MagicalTimeShowcase />
-              <HookesLawShowcase />
-              <FluidInterfacesShowcase />
-              <WaterRippleShowcase />
-              <PretextBreakerShowcase />
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-12">
-            <div className="flex items-center gap-4">
-              <div className="h-px bg-border flex-1" />
-              <h2 className="text-3xl font-serif font-semibold tracking-tight text-foreground uppercase">
-                Originals
-              </h2>
-              <div className="h-px bg-border flex-1" />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <GravityWordsShowcase />
-              <TypewriterShowcase />
-              <ConstellationShowcase />
-              <LetterSwarmShowcase />
-              <AsciiRainShowcase />
-            </div>
-          </div>
-        </main>
-
-        <Footer />
+function SectionGroup({
+  title,
+  entries,
+}: {
+  title: string;
+  entries: { id: string; component: React.ComponentType }[];
+}) {
+  return (
+    <div className="flex flex-col gap-12">
+      <div className="flex items-center gap-4">
+        <div className="h-px bg-border flex-1" />
+        <h2 className="text-3xl font-serif font-semibold tracking-tight text-foreground uppercase">
+          {title}
+        </h2>
+        <div className="h-px bg-border flex-1" />
       </div>
-    </PlaygroundContext.Provider>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {entries.map((s) => {
+          const C = s.component;
+          return <C key={s.id} />;
+        })}
+      </div>
+    </div>
   );
 }

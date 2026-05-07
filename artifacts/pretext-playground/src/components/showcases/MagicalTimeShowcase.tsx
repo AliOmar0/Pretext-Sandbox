@@ -58,6 +58,7 @@ export function MagicalTimeShowcase() {
   const color = COLORS[pos.color];
   return (
     <ShowcaseCard
+      showcaseId="magical-time"
       title="The Most Magical Time"
       description="A DVD logo bouncing across the page. The text refuses to sit still around it."
     >

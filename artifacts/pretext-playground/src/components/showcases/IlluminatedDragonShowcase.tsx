@@ -67,23 +67,26 @@ export function IlluminatedDragonShowcase() {
 
   return (
     <ShowcaseCard
+      showcaseId="illuminated-dragon"
       title="Illuminated Dragon"
       description="A segmented dragon glides along, eyes blinking, fire on the wind."
     >
       <div
         className="relative w-full rounded-lg overflow-hidden"
         style={{
-          height: H,
+          aspectRatio: `${W} / ${H}`,
+          maxHeight: 560,
           background:
             "radial-gradient(ellipse at 30% 30%, #2a1340 0%, #120721 60%, #06030c 100%)",
         }}
       >
         <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 w-full h-full" preserveAspectRatio="xMidYMid meet">
           <defs>
-            <radialGradient id="dragScale" cx="0.35" cy="0.3">
+            <radialGradient id="dragScale" cx="0.35" cy="0.3" r="0.85">
               <stop offset="0%" stopColor="#ffe9a8" />
-              <stop offset="35%" stopColor="#ff7a3d" />
-              <stop offset="100%" stopColor="#7a1a4a" />
+              <stop offset="40%" stopColor="#ff8a3a" />
+              <stop offset="80%" stopColor="#c2245a" />
+              <stop offset="100%" stopColor="#3a0a20" />
             </radialGradient>
             <radialGradient id="dragGlow">
               <stop offset="0%" stopColor="rgba(255,180,80,0.55)" />
@@ -101,7 +104,7 @@ export function IlluminatedDragonShowcase() {
 
           {/* ambient body glow */}
           {segments.map((s, i) => (
-            <circle key={`g${i}`} cx={s.x} cy={s.y} r={s.r * 1.7} fill="url(#dragGlow)" />
+            <circle key={`g${i}`} cx={s.x} cy={s.y} r={s.r * 1.4} fill="url(#dragGlow)" opacity={0.6} />
           ))}
 
           {/* tail fin */}

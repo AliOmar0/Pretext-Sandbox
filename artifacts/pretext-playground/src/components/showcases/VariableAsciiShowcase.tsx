@@ -67,6 +67,7 @@ export function VariableAsciiShowcase() {
 
   return (
     <ShowcaseCard
+      showcaseId="variable-ascii"
       title="Variable Typographic ASCII"
       description="Your text rendered as a glyph, then sampled into ASCII. Drag the weight."
       controls={
@@ -83,7 +84,8 @@ export function VariableAsciiShowcase() {
     >
       <div
         ref={wrapRef}
-        className="relative h-[280px] rounded-lg overflow-hidden bg-[#1a1410]"
+        className="relative w-full rounded-lg overflow-hidden bg-[#1a1410]"
+        style={{ aspectRatio: "16 / 7", maxHeight: 540 }}
       >
         <canvas ref={canvasRef} className="absolute inset-0" />
       </div>

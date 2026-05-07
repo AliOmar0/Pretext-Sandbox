@@ -122,6 +122,7 @@ export function ConstellationShowcase() {
 
   return (
     <ShowcaseCard
+      showcaseId="constellation"
       title="Word Cloud Constellation"
       description="Words become stars. Faint lines connect neighbors. The sky slowly turns."
       className="md:col-span-2"

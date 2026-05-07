@@ -75,6 +75,7 @@ export function AsciiRainShowcase() {
 
   return (
     <ShowcaseCard
+      showcaseId="ascii-rain"
       title="ASCII Rain"
       description="Falling characters sampled from your source text."
     >
